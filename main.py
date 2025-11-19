@@ -4,200 +4,201 @@ import pandas as pd
 import plotly.express as px
 import datetime
 
-# --- 1. BONTERRA ENTERPRISE THEME ---
-st.set_page_config(
-    page_title="Bonterra Intelligence",
-    page_icon="🏛️",
-    layout="wide",
-    initial_sidebar_state="expanded"
-)
+# --- 1. CONFIGURATION & BRANDING ---
+st.set_page_config(page_title="Bonterra | Data Lake", page_icon="🌊", layout="wide")
 
-# Brand Palette
+# Bonterra Colors
 COLOR_PRIMARY = "#381360"   # Scarlet Gum
 COLOR_SECONDARY = "#84EA9F" # Pastel Green
-COLOR_ACCENT = "#6B3A91"    # Highlight Purple
-COLOR_BG = "#F4F6F8"        # Enterprise Gray
+COLOR_BG = "#F4F6F8"
 
 st.markdown(f"""
     <style>
     .stApp {{ background-color: {COLOR_BG}; }}
-    h1, h2, h3 {{ color: {COLOR_PRIMARY} !important; font-family: 'Segoe UI', sans-serif; }}
-    div[data-testid="stMetric"] {{
-        background-color: #FFFFFF; border: 1px solid #ddd; padding: 15px;
-        border-top: 5px solid {COLOR_SECONDARY}; border-radius: 8px;
+    h1, h2, h3 {{ color: {COLOR_PRIMARY}; }}
+    .stDataFrame {{ background-color: white; border-radius: 10px; padding: 10px; }}
+    div.stButton > button {{ 
+        background-color: {COLOR_PRIMARY}; color: white; border: none; padding: 10px 20px; border-radius: 5px;
     }}
-    div.stButton > button {{
-        background-color: {COLOR_PRIMARY}; color: white; border-radius: 6px; border: none; padding: 10px;
-    }}
-    div.stButton > button:hover {{ background-color: {COLOR_ACCENT}; color: white; }}
-    thead tr th {{ background-color: {COLOR_PRIMARY} !important; color: white !important; }}
+    div.stButton > button:hover {{ background-color: #5D2E86; color: white; }}
     </style>
     """, unsafe_allow_html=True)
 
-# --- 2. INTELLIGENCE DATA MAP ---
+# --- 2. REFERENCE DATA ---
 US_STATES = {
     "AL": "Alabama", "AK": "Alaska", "AZ": "Arizona", "AR": "Arkansas", "CA": "California",
-    "CO": "Colorado", "CT": "Connecticut", "DE": "Delaware", "DC": "District of Columbia",
-    "FL": "Florida", "GA": "Georgia", "HI": "Hawaii", "ID": "Idaho", "IL": "Illinois",
-    "IN": "Indiana", "IA": "Iowa", "KS": "Kansas", "KY": "Kentucky", "LA": "Louisiana",
-    "ME": "Maine", "MD": "Maryland", "MA": "Massachusetts", "MI": "Michigan", "MN": "Minnesota",
-    "MS": "Mississippi", "MO": "Missouri", "MT": "Montana", "NE": "Nebraska", "NV": "Nevada",
-    "NH": "New Hampshire", "NJ": "New Jersey", "NM": "New Mexico", "NY": "New York",
-    "NC": "North Carolina", "ND": "North Dakota", "OH": "Ohio", "OK": "Oklahoma",
-    "OR": "Oregon", "PA": "Pennsylvania", "RI": "Rhode Island", "SC": "South Carolina",
+    "CO": "Colorado", "CT": "Connecticut", "DE": "Delaware", "FL": "Florida", "GA": "Georgia",
+    "HI": "Hawaii", "ID": "Idaho", "IL": "Illinois", "IN": "Indiana", "IA": "Iowa",
+    "KS": "Kansas", "KY": "Kentucky", "LA": "Louisiana", "ME": "Maine", "MD": "Maryland",
+    "MA": "Massachusetts", "MI": "Michigan", "MN": "Minnesota", "MS": "Mississippi", "MO": "Missouri",
+    "MT": "Montana", "NE": "Nebraska", "NV": "Nevada", "NH": "New Hampshire", "NJ": "New Jersey",
+    "NM": "New Mexico", "NY": "New York", "NC": "North Carolina", "ND": "North Dakota", "OH": "Ohio",
+    "OK": "Oklahoma", "OR": "Oregon", "PA": "Pennsylvania", "RI": "Rhode Island", "SC": "South Carolina",
     "SD": "South Dakota", "TN": "Tennessee", "TX": "Texas", "UT": "Utah", "VT": "Vermont",
     "VA": "Virginia", "WA": "Washington", "WV": "West Virginia", "WI": "Wisconsin", "WY": "Wyoming"
 }
 
-VERTICALS = {
-    "School Districts (K-12)": {
-        # KEY CHANGE: Removed specific school district keywords.
-        # Now targeting the Funding STREAMS (Title I, IDEA, ESSER) which go to the State.
-        "cfda": ["84.010", "84.027", "84.425", "84.287", "84.367", "84.424"],
-        "keywords": ["Education", "School", "Elementary", "Secondary", "Instruction"],
-        "desc": "Title I (Disadvantaged), IDEA (Special Ed), ESSER (Relief)"
-    },
-    "Workforce Development": {
-        "cfda": ["17.258", "17.259", "17.278", "17.207", "17.225"],
-        "keywords": ["Workforce", "Labor", "Employment", "Training"],
-        "desc": "WIOA & Employment Services"
-    },
-    "Violence Prevention": {
-        "cfda": ["16.575", "16.045", "16.738"],
-        "keywords": ["Victim", "Violence", "Justice", "Safety"],
-        "desc": "VOCA & CVI"
-    },
-     "Aging & Seniors": {
-        "cfda": ["93.044", "93.045", "93.052"], 
-        "keywords": ["Aging", "Elder", "Senior", "Community Living"],
-        "desc": "OAA Title III"
-    }
+# KEYWORDS FOR BACKEND FILTERING (Not sent to API)
+VERTICAL_KEYWORDS = {
+    "Workforce Development": ["workforce", "wioa", "labor", "employment", "job training", "apprentice", "dislocated"],
+    "School Districts (K-12)": ["school", "education", "elementary", "isd", "title i", "esser", "idea", "instruction"],
+    "Violence Prevention": ["violence", "victim", "voca", "abuse", "safety", "justice", "crime"],
+    "Aging Services": ["aging", "elder", "senior", "nutrition", "adult protective", "home delivered"],
+    "Veterans": ["veteran", "homeless vet", "hv rp"],
+    "Housing": ["housing", "homeless", "tenant", "rent", "cdbg"]
 }
 
-# --- 3. "NUCLEAR" DATA FETCHING (3-Stage Fallback) ---
+# --- 3. THE "WIDE NET" API FUNCTION ---
 @st.cache_data
-def fetch_usaspending_data(state_code, vertical_config, days_back):
-    url = "https://api.usaspending.gov/api/v2/search/spending_by_award/"
+def fetch_all_state_data(state_code, days_back, data_type="Prime Awards"):
+    # Calculate dates
     start_date = (datetime.date.today() - datetime.timedelta(days=days_back)).strftime("%Y-%m-%d")
     end_date = datetime.date.today().strftime("%Y-%m-%d")
     
-    fields = ["Generated Unique Award ID", "Recipient Name", "Award Amount", "Description", "Action Date", "Awarding Agency"]
+    # We fetch active awards in the state. We DO NOT filter by keyword here.
+    # We get the "Firehose" of data.
     
-    base_filters = {
-        "time_period": [{"start_date": start_date, "end_date": end_date}],
-        "award_type_codes": ["A", "B", "C", "D"]
-    }
+    if data_type == "Prime Awards":
+        url = "https://api.usaspending.gov/api/v2/search/spending_by_award/"
+        payload = {
+            "filters": {
+                "time_period": [{"start_date": start_date, "end_date": end_date}],
+                "place_of_performance_locations": [{"country": "USA", "state": state_code}],
+                "award_type_codes": ["A", "B", "C", "D"] # Grants & Contracts
+            },
+            "fields": ["Generated Unique Award ID", "Recipient Name", "Award Amount", "Description", "Action Date", "Awarding Agency"],
+            "limit": 100, # Fetch top 100 most recent
+            "sort": "Action Date",
+            "order": "desc"
+        }
+    else: 
+        # SUB-AWARDS (This is a different, messier endpoint, but we'll try basic search)
+        # Note: USAspending doesn't have a clean "Search all subawards by state" endpoint 
+        # that mirrors the Prime one perfectly without filters. 
+        # We will use the Prime endpoint but look for 'subawards' flag if available, 
+        # OR revert to Prime but emphasize Recipient Location.
+        # *Fallback*: For stability, we stick to Prime but increase the limit to catch more.
+        st.warning("⚠️ Note: The public API restricts bulk Sub-Award downloading without specific filters. Showing Prime Awards that flow to this state.")
+        url = "https://api.usaspending.gov/api/v2/search/spending_by_award/"
+        payload = {
+            "filters": {
+                "time_period": [{"start_date": start_date, "end_date": end_date}],
+                "recipient_locations": [{"country": "USA", "state": state_code}],
+                "award_type_codes": ["A", "B", "C", "D"]
+            },
+            "fields": ["Generated Unique Award ID", "Recipient Name", "Award Amount", "Description", "Action Date", "Awarding Agency"],
+            "limit": 100
+        }
 
-    # --- ATTEMPT 1: The "Perfect" Search (CFDA + Recipient in State) ---
-    # This looks for money sent TO an Arkansas address with the right Program ID.
     try:
-        payload = {"filters": base_filters.copy(), "fields": fields, "limit": 100}
-        payload["filters"]["recipient_locations"] = [{"country": "USA", "state": state_code}]
-        payload["filters"]["program_numbers"] = vertical_config["cfda"]
-        
-        resp = requests.post(url, json=payload).json()
-        df = pd.DataFrame(resp.get('results', []))
-        
-        # --- ATTEMPT 2: The "Broad" Search (CFDA Only + Place of Performance) ---
-        # If Attempt 1 fails, maybe the recipient address is DC, but money is spent in AR.
-        if df.empty:
-            payload["filters"].pop("recipient_locations") # Remove recipient constraint
-            payload["filters"]["place_of_performance_locations"] = [{"country": "USA", "state": state_code}]
-            
-            resp = requests.post(url, json=payload).json()
-            df = pd.DataFrame(resp.get('results', []))
-
-        # --- ATTEMPT 3: The "Desperate" Search (Keywords Only) ---
-        # If CFDA codes fail (data entry error by govt), search for "Education" in Arkansas.
-        if df.empty:
-            payload["filters"].pop("program_numbers") # Drop CFDA strictness
-            payload["filters"]["keyword_search"] = vertical_config["keywords"]
-            
-            resp = requests.post(url, json=payload).json()
-            df = pd.DataFrame(resp.get('results', []))
-            
-        return df
-
+        response = requests.post(url, json=payload)
+        data = response.json()
+        return pd.DataFrame(data.get('results', []))
     except Exception as e:
+        st.error(f"API Error: {e}")
         return pd.DataFrame()
 
-# --- 4. DASHBOARD ---
+# --- 4. APP LAYOUT ---
 with st.sidebar:
     try:
-        st.image("https://logo.clearbit.com/bonterratech.com", width=60)
+        st.image("https://logo.clearbit.com/bonterratech.com", width=50)
     except:
         st.header("Bonterra")
+        
+    st.title("Data Lake Explorer")
     
-    st.markdown("### PubSec Intelligence")
-    
-    # Set default to Arkansas for you
-    state_names = list(US_STATES.values())
-    selected_state_name = st.selectbox("State", options=state_names, index=state_names.index("Arkansas"))
+    # 1. Select State
+    selected_state_name = st.selectbox("State", list(US_STATES.values()), index=3) # Default AR
     selected_state_code = [k for k, v in US_STATES.items() if v == selected_state_name][0]
-
-    selected_vertical = st.selectbox("Vertical", options=list(VERTICALS.keys()))
-    days_lookback = st.slider("Fiscal Lookback (Days)", 90, 730, 730) # Default 2 years
     
-    st.info(f"Target: **{VERTICALS[selected_vertical]['desc']}**")
-    search_btn = st.button("🔍 Find Funding Flows")
+    # 2. Select Data Scope
+    # data_scope = st.radio("Data Level", ["Prime Awards", "Sub-Awards (Experimental)"])
+    # *Simplified for V6 stability*:
+    st.info("Fetching all recent Prime Awards flowing into the state.")
+    
+    # 3. Select Backend Filters
+    st.subheader("Backend Filters")
+    st.caption("Filter the data AFTER downloading it.")
+    selected_vertical = st.selectbox("Highlight Vertical", ["Show All"] + list(VERTICAL_KEYWORDS.keys()))
+    
+    days = st.slider("Lookback Days", 30, 730, 365)
+    
+    load_btn = st.button("🔄 Fetch Data Lake")
 
-if search_btn:
-    with st.spinner(f"Deep scanning federal awards in {selected_state_name}..."):
-        df = fetch_usaspending_data(selected_state_code, VERTICALS[selected_vertical], days_lookback)
+# MAIN PAGE
+if load_btn:
+    with st.spinner(f"Downloading raw grant data for {selected_state_name}..."):
+        # 1. FETCH EVERYTHING
+        df = fetch_all_state_data(selected_state_code, days, "Prime Awards")
         
         if not df.empty:
+            # 2. BACKEND PROCESSING
             df['Action Date'] = pd.to_datetime(df['Action Date'])
             df['Link'] = "https://www.usaspending.gov/award/" + df['Generated Unique Award ID'].astype(str).apply(requests.utils.quote)
             
-            # HEADER
-            st.title(f"Funding Report: {selected_state_name}")
-            st.markdown(f"Showing active **{selected_vertical}** awards.")
-            
-            # METRICS
-            m1, m2, m3 = st.columns(3)
-            m1.metric("Total Volume", f"${df['Award Amount'].sum():,.0f}")
-            m2.metric("Awards Found", len(df))
-            m3.metric("Avg. Size", f"${df['Award Amount'].mean():,.0f}")
-            
-            st.markdown("---")
-            
-            # CHARTS
-            c1, c2 = st.columns(2)
-            with c1:
-                # Show WHO is getting the money (Recipient)
-                # This solves the K-12 confusion (showing State Dept of Ed vs School District)
-                recip_df = df.groupby("Recipient Name")["Award Amount"].sum().reset_index().sort_values("Award Amount", ascending=True).tail(10)
-                fig = px.bar(recip_df, x="Award Amount", y="Recipient Name", orientation='h', title="Top Recipients (Who has the money?)", color_discrete_sequence=[COLOR_PRIMARY])
-                st.plotly_chart(fig, use_container_width=True)
-            
-            with c2:
-                df['Month'] = df['Action Date'].dt.to_period('M').astype(str)
-                time_df = df.groupby('Month')['Award Amount'].sum().reset_index()
-                fig2 = px.area(time_df, x='Month', y='Award Amount', title="Funding Timeline", color_discrete_sequence=[COLOR_SECONDARY])
-                st.plotly_chart(fig2, use_container_width=True)
+            # 3. FILTERING LOGIC
+            if selected_vertical != "Show All":
+                # Get keywords for the selected vertical
+                keywords = VERTICAL_KEYWORDS[selected_vertical]
+                # Create a regex pattern (e.g., "school|education|elementary")
+                pattern = '|'.join(keywords)
+                
+                # Filter the DataFrame based on Description OR Agency Name (Case insensitive)
+                filtered_df = df[
+                    df['Description'].astype(str).str.contains(pattern, case=False, na=False) | 
+                    df['Awarding Agency'].astype(str).str.contains(pattern, case=False, na=False)
+                ]
+                
+                st.success(f"Filtered down to {len(filtered_df)} records related to **{selected_vertical}** out of {len(df)} total records found.")
+                display_df = filtered_df
+            else:
+                st.success(f"Showing all {len(df)} records found.")
+                display_df = df
 
-            # DATA TABLE
-            st.subheader("📋 Master Award List")
-            st.dataframe(
-                df[["Action Date", "Recipient Name", "Award Amount", "Description", "Link"]].sort_values("Award Amount", ascending=False),
-                column_config={
-                    "Link": st.column_config.LinkColumn("Details", display_text="View 🔗"),
-                    "Award Amount": st.column_config.NumberColumn("Value", format="$%.2f"),
-                    "Action Date": st.column_config.DateColumn("Date", format="YYYY-MM-DD"),
-                    "Description": st.column_config.TextColumn("Description", width="medium")
-                },
-                use_container_width=True,
-                hide_index=True
-            )
+            # 4. DISPLAY
+            if not display_df.empty:
+                # Metrics
+                col1, col2 = st.columns(2)
+                col1.metric("Total Volume", f"${display_df['Award Amount'].sum():,.0f}")
+                col2.metric("Count", len(display_df))
+                
+                # Charts
+                c1, c2 = st.columns(2)
+                with c1:
+                    # Who is getting money?
+                    recip_fig = px.bar(display_df.head(10), y='Recipient Name', x='Award Amount', orientation='h', title="Top Recipients", color_discrete_sequence=[COLOR_PRIMARY])
+                    st.plotly_chart(recip_fig, use_container_width=True)
+                with c2:
+                    # Timeline
+                    display_df['Month'] = display_df['Action Date'].dt.to_period('M').astype(str)
+                    time_agg = display_df.groupby('Month')['Award Amount'].sum().reset_index()
+                    time_fig = px.area(time_agg, x='Month', y='Award Amount', title="Funding Flow", color_discrete_sequence=[COLOR_SECONDARY])
+                    st.plotly_chart(time_fig, use_container_width=True)
+
+                # Table
+                st.subheader("Details")
+                st.dataframe(
+                    display_df[["Action Date", "Recipient Name", "Award Amount", "Description", "Link"]],
+                    column_config={
+                        "Link": st.column_config.LinkColumn("Link", display_text="Open 🔗"),
+                        "Award Amount": st.column_config.NumberColumn("Amount", format="$%.2f")
+                    },
+                    use_container_width=True, 
+                    hide_index=True
+                )
+            else:
+                st.warning(f"We found {len(df)} total grants for {selected_state_name}, but none matched your keywords for {selected_vertical}.")
+                st.markdown("**Recommendation:** Switch the dropdown back to 'Show All' to see what raw data is available.")
+                
         else:
-            st.error(f"No Primary Awards found for {selected_vertical} in {selected_state_name}.")
-            st.markdown("""
-            **Explanation:**
-            We searched for **Direct Federal -> State** flows. If this is empty for K-12, it is highly unusual.
-            
-            **Troubleshooting:**
-            1. Verify the lookback is set to **730 Days**.
-            2. The API might be experiencing downtime for this specific CFDA cluster.
-            """)
+            st.error("No data returned from API. This usually means the date range is too short or the State Code is mismatching.")
+
 else:
-    st.markdown(f"<div style='text-align:center; padding:50px;'><h2 style='color:{COLOR_PRIMARY}'>Bonterra Intelligence V5.0</h2><p>Select parameters to begin deep scan.</p></div>", unsafe_allow_html=True)
+    # Landing Page
+    st.markdown(f"""
+    <div style='text-align:center; padding: 50px;'>
+        <h1 style='color:{COLOR_PRIMARY}'>Bonterra | Wide Net Search</h1>
+        <p>This tool fetches <b>ALL</b> recent funding for a state, then lets you filter it locally.</p>
+        <p>👈 Select a State and click 'Fetch Data Lake' to begin.</p>
+    </div>
+    """, unsafe_allow_html=True)
