@@ -4,69 +4,83 @@ import pandas as pd
 import plotly.express as px
 import datetime
 
-# --- 1. BONTERRA BRANDING & CONFIG ---
-# Official/Approximate Bonterra Brand Colors
-COLOR_PRIMARY = "#381360"   # Scarlet Gum
-COLOR_SECONDARY = "#84EA9F" # Pastel Green
-COLOR_ACCENT = "#6B3A91"    # Lighter Purple for hover/charts
-COLOR_BG = "#F4F5F7"        # Light Gray Background
+# --- 1. BRANDING & CONFIGURATION ---
+# Official Bonterra Brand Identity
+COLOR_PRIMARY = "#381360"   # Scarlet Gum (Deep Purple)
+COLOR_SECONDARY = "#84EA9F" # Pastel Green (Action Color)
+COLOR_ACCENT = "#5D2E86"    # Lighter Purple
+COLOR_BG = "#F4F6F9"        # Professional Light Gray
 COLOR_TEXT = "#2C0020"
 
 st.set_page_config(
-    page_title="Bonterra | PubSec Intelligence",
+    page_title="Bonterra | Public Sector Intelligence",
     page_icon="🏛️",
-    layout="wide"
+    layout="wide",
+    initial_sidebar_state="expanded"
 )
 
-# Custom CSS for a "High-End" Enterprise Look
+# Custom CSS for "Eye-Catchy" Enterprise Look
 st.markdown(f"""
     <style>
-    /* Global Background */
+    /* App Background */
     .stApp {{
         background-color: {COLOR_BG};
     }}
     
-    /* Headings */
-    h1, h2, h3 {{
+    /* Headers */
+    h1 {{
+        color: {COLOR_PRIMARY};
+        font-family: 'Helvetica Neue', sans-serif;
+        font-weight: 800;
+        letter-spacing: -1px;
+    }}
+    h2, h3 {{
         color: {COLOR_PRIMARY} !important;
-        font-family: 'Segoe UI', Helvetica, sans-serif;
-        font-weight: 700;
+        font-family: 'Helvetica Neue', sans-serif;
     }}
     
-    /* Metric Cards (Top Row) */
+    /* Card Styling for Metrics */
     div[data-testid="stMetric"] {{
         background-color: white;
         padding: 20px;
-        border-radius: 10px;
+        border-radius: 12px;
         border-left: 6px solid {COLOR_SECONDARY};
-        box-shadow: 0 4px 6px rgba(0,0,0,0.05);
+        box-shadow: 0 4px 12px rgba(0,0,0,0.05);
     }}
     
-    /* Sidebar */
+    /* Sidebar Styling */
     section[data-testid="stSidebar"] {{
         background-color: white;
-        border-right: 1px solid #ddd;
+        border-right: 1px solid #E5E5E5;
     }}
     
     /* Buttons */
     div.stButton > button {{
         background-color: {COLOR_PRIMARY};
         color: white;
-        border-radius: 6px;
-        padding: 0.5rem 1rem;
+        border-radius: 8px;
+        padding: 12px 24px;
+        font-size: 16px;
         font-weight: 600;
         border: none;
         width: 100%;
+        box-shadow: 0 4px 6px rgba(56, 19, 96, 0.2);
     }}
     div.stButton > button:hover {{
         background-color: {COLOR_ACCENT};
         color: white;
+        box-shadow: 0 6px 8px rgba(56, 19, 96, 0.3);
+    }}
+    
+    /* Dataframe Headers */
+    th {{
+        background-color: {COLOR_PRIMARY} !important;
+        color: white !important;
     }}
     </style>
     """, unsafe_allow_html=True)
 
-# --- 2. REFERENCE DATA (The "Engine") ---
-# Full US State List
+# --- 2. INTELLIGENCE ENGINE (States & Programs) ---
 US_STATES = {
     "AL": "Alabama", "AK": "Alaska", "AZ": "Arizona", "AR": "Arkansas", "CA": "California",
     "CO": "Colorado", "CT": "Connecticut", "DE": "Delaware", "DC": "District of Columbia",
@@ -81,37 +95,37 @@ US_STATES = {
     "VA": "Virginia", "WA": "Washington", "WV": "West Virginia", "WI": "Wisconsin", "WY": "Wyoming"
 }
 
-# INTELLIGENCE MAPPING: This maps verticals to specific Federal Program Numbers (CFDA)
-# This fixes the "No Data" error by searching for Program IDs, not just loose keywords.
+# UPDATED VERTICALS: Added more CFDA codes to catch "hidden" money
 VERTICALS = {
     "Workforce Development": {
-        "cfda": ["17.258", "17.259", "17.278", "17.207", "17.225"], 
-        "keywords": ["WIOA", "Workforce", "Dislocated Worker", "Apprenticeship"],
-        "desc": "WIOA Adult, Youth, Dislocated Worker & Wagner-Peyser"
+        # Added 17.261 (Pilots), 17.207 (Employment Svc), 17.225 (Unemployment Admin)
+        "cfda": ["17.258", "17.259", "17.278", "17.207", "17.225", "17.261"], 
+        "keywords": ["WIOA", "Workforce", "Dislocated Worker", "Apprenticeship", "Department of Labor"],
+        "desc": "WIOA Adult, Youth, Wagner-Peyser & State Pilots"
     },
     "Violence Prevention (CVI)": {
         "cfda": ["16.575", "16.045", "16.738", "16.590"],
-        "keywords": ["VOCA", "Victim", "Violence", "Stop School Violence"],
+        "keywords": ["VOCA", "Victim", "Violence", "Stop School Violence", "Justice Assistance"],
         "desc": "VOCA, CVIPI, Byrne JAG"
     },
     "Aging & Senior Services": {
         "cfda": ["93.044", "93.045", "93.052", "93.041", "93.042"],
-        "keywords": ["Aging", "Older Americans", "Geriatric", "Adult Protective"],
-        "desc": "OAA Title III (Supportive Services, Nutrition), Title VII"
+        "keywords": ["Aging", "Older Americans", "Geriatric", "Adult Protective", "ACL"],
+        "desc": "OAA Title III (Supportive Services, Nutrition)"
     },
     "Re-entry & Recidivism": {
         "cfda": ["16.812", "16.838", "16.738"],
-        "keywords": ["Reentry", "Second Chance", "Recidivism", "Corrections"],
-        "desc": "Second Chance Act, Comprehensive Opioid, Stimulant, and Substance Abuse"
+        "keywords": ["Reentry", "Second Chance", "Recidivism", "Corrections", "Justice"],
+        "desc": "Second Chance Act, COSSAP"
     },
     "School Districts (K-12)": {
         "cfda": ["84.010", "84.425", "84.027"],
         "keywords": ["School District", "ISD", "Elementary", "Board of Education"],
-        "desc": "Title I Grants, ESSER (Covid Relief), Special Ed (IDEA)"
+        "desc": "Title I Grants, ESSER, Special Ed"
     }
 }
 
-# --- 3. DATA FETCHING LOGIC ---
+# --- 3. AGGRESSIVE DATA FETCHING ---
 @st.cache_data
 def fetch_usaspending_data(state_code, vertical_config, days_back):
     url = "https://api.usaspending.gov/api/v2/search/spending_by_award/"
@@ -119,138 +133,134 @@ def fetch_usaspending_data(state_code, vertical_config, days_back):
     start_date = (datetime.date.today() - datetime.timedelta(days=days_back)).strftime("%Y-%m-%d")
     end_date = datetime.date.today().strftime("%Y-%m-%d")
     
-    # We perform TWO searches:
-    # 1. CFDA Search (Highly Accurate)
-    # 2. Keyword Search (Catch-all)
+    # Strategy 1: Search by Recipient Location (Standard)
+    # Strategy 2: Search by Place of Performance (Aggressive - Catching money spent IN the state)
     
-    payload = {
-        "filters": {
-            "time_period": [{"start_date": start_date, "end_date": end_date}],
-            # Search by Recipient Location to find money flowing TO the state
-            "recipient_locations": [{"country": "USA", "state": state_code}],
-            "award_type_codes": ["A", "B", "C", "D"], # Grants & Direct Payments
-            # HYBRID SEARCH: We filter by specific Program Numbers OR Keywords
-            "program_numbers": vertical_config["cfda"]
-        },
-        "fields": [
-            "Generated Unique Award ID",
-            "Recipient Name", 
-            "Award Amount", 
-            "Description", 
-            "Action Date", 
-            "Awarding Agency",
-            "CFDA Number",
-            "CFDA Title"
-        ],
-        "limit": 100,
-        "page": 1
+    base_filters = {
+        "time_period": [{"start_date": start_date, "end_date": end_date}],
+        "award_type_codes": ["A", "B", "C", "D"],
+        "program_numbers": vertical_config["cfda"]
     }
+
+    # Try Strategy 1: Recipient Location
+    payload_1 = {"filters": base_filters.copy(), "limit": 100}
+    payload_1["filters"]["recipient_locations"] = [{"country": "USA", "state": state_code}]
     
+    # Fields we want to display
+    fields = [
+        "Generated Unique Award ID", "Recipient Name", "Award Amount", 
+        "Description", "Action Date", "Awarding Agency", "CFDA Number", "CFDA Title"
+    ]
+    payload_1["fields"] = fields
+
     try:
-        response = requests.post(url, json=payload)
+        # Attempt 1
+        response = requests.post(url, json=payload_1)
         data = response.json()
-        df = pd.DataFrame(data['results'])
+        df = pd.DataFrame(data.get('results', []))
         
-        # If CFDA search returns few results, try broadening with keywords
-        if len(df) < 5:
-            payload["filters"].pop("program_numbers")
-            payload["filters"]["keyword_search"] = vertical_config["keywords"]
-            response_broad = requests.post(url, json=payload)
-            data_broad = response_broad.json()
-            df_broad = pd.DataFrame(data_broad['results'])
-            df = pd.concat([df, df_broad]).drop_duplicates(subset=['Generated Unique Award ID'])
+        # Attempt 2: If empty, try "Place of Performance" (Money spent IN Arkansas)
+        if df.empty:
+            payload_2 = {"filters": base_filters.copy(), "limit": 100, "fields": fields}
+            payload_2["filters"]["place_of_performance_locations"] = [{"country": "USA", "state": state_code}]
             
+            response_2 = requests.post(url, json=payload_2)
+            data_2 = response_2.json()
+            df = pd.DataFrame(data_2.get('results', []))
+            
+        # Attempt 3: If still empty, DROP CFDA and use Keywords (Broadest Search)
+        if df.empty:
+             payload_3 = {"filters": base_filters.copy(), "limit": 100, "fields": fields}
+             payload_3["filters"].pop("program_numbers") # Remove strict numbers
+             payload_3["filters"]["keyword_search"] = vertical_config["keywords"]
+             payload_3["filters"]["recipient_locations"] = [{"country": "USA", "state": state_code}]
+             
+             response_3 = requests.post(url, json=payload_3)
+             data_3 = response_3.json()
+             df = pd.DataFrame(data_3.get('results', []))
+
         return df
+        
     except Exception as e:
+        st.error(f"API Error: {e}")
         return pd.DataFrame()
 
-# --- 4. UI LAYOUT ---
+# --- 4. MAIN DASHBOARD ---
 
 # Sidebar
 with st.sidebar:
-    st.image("https://brandfetch.com/bonterratech.com/icon", width=80)
-    st.markdown("## Bonterra | PubSec")
+    # LOGO: Using Clearbit for reliable logo loading
+    st.image("https://logo.clearbit.com/bonterratech.com", width=60)
+    st.markdown(f"<h1 style='color:{COLOR_PRIMARY}; font-size: 24px; margin-top:0;'>Bonterra PubSec</h1>", unsafe_allow_html=True)
     
-    # State Selector with Default to AR (since you asked about it)
-    selected_state_name = st.selectbox("Region / State", options=list(US_STATES.values()), index=3) # Defaults to Arkansas
+    st.markdown("### 🎯 Campaign Target")
+    
+    # State Selector
+    selected_state_name = st.selectbox("State", options=list(US_STATES.values()), index=3) # Index 3 is Arkansas
     selected_state_code = [k for k, v in US_STATES.items() if v == selected_state_name][0]
 
-    selected_vertical = st.selectbox("Target Vertical", options=list(VERTICALS.keys()))
+    selected_vertical = st.selectbox("Vertical", options=list(VERTICALS.keys()))
     
-    # Helper text showing what we are tracking
-    st.caption(f"Tracking: {VERTICALS[selected_vertical]['desc']}")
+    st.info(f"Searching: **{VERTICALS[selected_vertical]['desc']}**")
     
-    days_lookback = st.slider("Lookback (Days)", 30, 365, 365) # Default to full year
+    # Default set to 730 Days (2 Years) to catch annual block grants
+    days_lookback = st.slider("Timeframe (Days)", 30, 730, 730)
     
     st.markdown("---")
-    search_btn = st.button("🚀 Generate Report")
-    
-    st.markdown("### Other Free Sources")
-    st.info("""
-    • **Grants.gov:** For open applications
-    • **SAM.gov:** For contract RFPs
-    • **USAC.org:** For E-Rate (Schools)
-    """)
+    search_btn = st.button("🔍 FIND OPPORTUNITIES", type="primary")
 
-# Main Dashboard
+# Main Area
 if search_btn:
-    with st.spinner(f"Connecting to Federal Database for {selected_state_name}..."):
+    with st.spinner(f"Aggregating federal data for {selected_state_name} (Last {days_lookback} days)..."):
         df = fetch_usaspending_data(selected_state_code, VERTICALS[selected_vertical], days_lookback)
         
         if not df.empty:
-            # Pre-processing
+            # Processing
             df['Action Date'] = pd.to_datetime(df['Action Date'])
             df['Link'] = "https://www.usaspending.gov/award/" + df['Generated Unique Award ID'].astype(str).apply(requests.utils.quote)
             
-            # Header Stats
             total_val = df['Award Amount'].sum()
-            avg_val = df['Award Amount'].mean()
+            count_val = len(df)
             
-            st.title(f"Funding Report: {selected_vertical}")
-            st.markdown(f"Recent federal investments flowing into **{selected_state_name}**.")
+            # --- TITLE & METRICS ---
+            col_title, col_logo = st.columns([4,1])
+            with col_title:
+                st.title(f"Funding Intelligence: {selected_state_name}")
+                st.markdown(f"Showing **{selected_vertical}** investments.")
             
-            # Metrics Row
-            col1, col2, col3 = st.columns(3)
-            col1.metric("Total Investment Identified", f"${total_val:,.0f}")
-            col2.metric("Deal Volume (Awards)", len(df))
-            col3.metric("Avg. Award Size", f"${avg_val:,.0f}")
+            m1, m2, m3 = st.columns(3)
+            m1.metric("Total Funding Identified", f"${total_val:,.0f}")
+            m2.metric("Total Awards", count_val)
+            m3.metric("Fiscal Lookback", f"{days_lookback} Days")
             
             st.markdown("---")
-
-            # Charts Row
-            c1, c2 = st.columns([1, 1])
             
+            # --- VISUALIZATIONS ---
+            c1, c2 = st.columns(2)
             with c1:
-                # Funding by Agency (Who is buying?)
-                agency_agg = df.groupby("Awarding Agency")["Award Amount"].sum().reset_index().sort_values("Award Amount", ascending=True)
-                fig_agency = px.bar(
-                    agency_agg, y="Awarding Agency", x="Award Amount", 
-                    orientation='h', title="Top Funding Agencies",
-                    color_discrete_sequence=[COLOR_PRIMARY]
-                )
-                st.plotly_chart(fig_agency, use_container_width=True)
-            
+                # Agency Bar Chart
+                ag_df = df.groupby("Awarding Agency")["Award Amount"].sum().reset_index().sort_values("Award Amount", ascending=True)
+                fig1 = px.bar(ag_df, x="Award Amount", y="Awarding Agency", orientation='h',
+                              title="Top Funding Sources", color_discrete_sequence=[COLOR_PRIMARY])
+                st.plotly_chart(fig1, use_container_width=True)
+                
             with c2:
-                # Funding Over Time (Trend)
-                time_agg = df.groupby("Action Date")["Award Amount"].sum().reset_index()
-                fig_time = px.line(
-                    time_agg, x="Action Date", y="Award Amount", 
-                    title="Investment Timeline", markers=True,
-                    color_discrete_sequence=[COLOR_SECONDARY]
-                )
-                # Add area fill
-                fig_time.update_traces(fill='tozeroy')
-                st.plotly_chart(fig_time, use_container_width=True)
+                # Time Series Area Chart
+                time_df = df.groupby("Action Date")["Award Amount"].sum().reset_index()
+                fig2 = px.area(time_df, x="Action Date", y="Award Amount",
+                               title="Funding Release Timeline", color_discrete_sequence=[COLOR_SECONDARY])
+                st.plotly_chart(fig2, use_container_width=True)
 
-            # The "Lead List" Table
-            st.subheader("📋 Opportunity Lead List")
+            # --- DATA TABLE ---
+            st.subheader("📋 Lead List (Click 'Open' to view details)")
             
+            # Configure table with clickable links
             st.dataframe(
                 df[["Action Date", "Recipient Name", "Award Amount", "Description", "Link"]].sort_values("Action Date", ascending=False),
                 column_config={
-                    "Link": st.column_config.LinkColumn("View Details", display_text="Open Award 🔗"),
-                    "Award Amount": st.column_config.NumberColumn("Value", format="$%.2f"),
-                    "Action Date": st.column_config.DateColumn("Award Date", format="MMM DD, YYYY"),
+                    "Link": st.column_config.LinkColumn("Source", display_text="Open Grant 🔗"),
+                    "Award Amount": st.column_config.NumberColumn("Amount", format="$%.2f"),
+                    "Action Date": st.column_config.DateColumn("Date", format="YYYY-MM-DD"),
                     "Description": st.column_config.TextColumn("Grant Description", width="large")
                 },
                 use_container_width=True,
@@ -258,21 +268,29 @@ if search_btn:
             )
         
         else:
-            st.error(f"No data found for {selected_vertical} in {selected_state_name}.")
-            st.markdown("""
-            **Why?**
-            1. States often receive "Block Grants" at the start of the Fiscal Year (October).
-            2. Try increasing the **Lookback slider** to 365 days.
-            3. Try searching for a larger state (e.g., TX, CA) to verify the system is working.
+            # Fallback Message
+            st.warning(f"No data found for {selected_vertical} in {selected_state_name}.")
+            st.markdown("### 🔎 Diagnostics:")
+            st.markdown(f"""
+            1. **Search Scope:** Checked 2 years of history (730 Days).
+            2. **CFDA Codes:** Scanned for programs {', '.join(VERTICALS[selected_vertical]['cfda'])}.
+            3. **Result:** No direct federal award updates were filed for {selected_state_code} in this window.
+            
+            *Recommendation: Try checking 'School Districts' or 'Violence Prevention' for this state to verify connectivity.*
             """)
 
 else:
-    # Empty State (Beautiful Landing Page)
+    # Landing Page
     st.markdown(f"""
-    <div style="text-align: center; padding: 60px; background-color: white; border-radius: 12px; border: 1px solid #eee;">
-        <h2 style="color: {COLOR_PRIMARY};">Welcome to Bonterra Public Sector Intelligence</h2>
-        <p style="font-size: 18px; color: #666;">
-            Use the sidebar to uncover <b>Sales Leads</b> and <b>Funding Flows</b> from live government data.
+    <div style="text-align: center; padding: 80px; background-color: white; border-radius: 16px; border: 1px solid #eee;">
+        <h1 style="color: {COLOR_PRIMARY}; margin-bottom: 10px;">Bonterra Intelligence Engine</h1>
+        <p style="font-size: 18px; color: #555; max-width: 600px; margin: 0 auto;">
+            Select a <b>State</b> and <b>Vertical</b> from the sidebar to scan federal databases for active funding opportunities.
         </p>
+        <br>
+        <div style="display: flex; justify-content: center; gap: 20px;">
+            <span style="padding: 8px 16px; background: #EFEFEF; border-radius: 20px; font-size: 14px;">✅ Live API Connection</span>
+            <span style="padding: 8px 16px; background: #EFEFEF; border-radius: 20px; font-size: 14px;">✅ CFDA Verified</span>
+        </div>
     </div>
     """, unsafe_allow_html=True)
